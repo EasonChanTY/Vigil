@@ -1749,6 +1749,110 @@ if(a==='daily'){
   startDaily();return;
 }
 });  
+/* ===== 补丁：力量显示 + 能量强化 ===== */
+(function(){
+var css='.pwr{font-family:"Songti SC",serif;font-size:11.5px;font-weight:700;color:#ff9a6a;'
++'padding:2px 8px;border-radius:6px;background:rgba(200,90,40,.2);'
++'border:1px solid rgba(255,140,90,.55);box-shadow:0 0 10px rgba(255,120,60,.4);white-space:nowrap}';
+var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+})();
+
+if(!G.upg)G.upg={hp:0,blk:0,chain:0};
+if(G.upg.energy===undefined)G.upg.energy=0;
+UPG.push({id:'energy',n:'能量强化',d:'每回合能量 +1',max:2,p:[1200,3200]});
+
+/* —— 覆盖：开局能量 —— */
+function startFloor(n){
+var isB=!!BS[n];
+G.max=44+HPM()+(G.upg.hp||0)*2+Math.floor(G.best/10)*5;
+if(G.hp>G.max)G.hp=G.max;
+var cnt=isB?1:(n<4?1:n<10?2:n<20?R(1,2):n<35?2:R(2,3));
+var m=isB?(1+(n-1)*0.03):(1+(n-1)*0.055);
+var foes=[];
+if(isB){foes.push(mk(BS[n],m))}
+else{for(var i=0;i<cnt;i++){var t=F[R(0,F.length-1)];
+foes.push(mk(t,m*(cnt===1?1:cnt===2?0.62:0.46)));G.dexF[t.n]=1}}
+B={n:n,boss:isB,foes:foes,tg:0,en:3+(G.upg.energy||0),turn:1,ch:0,ct:'',over:false,lock:false,
+hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
+dN(5+(HR('sand')?1:0)+(G.weapon==='wand'?1:0));
+if(isB){S.boss();FL('r');SK()}
+ambStart();go('fight');
+if(!G.tut)setTimeout(tutStart,700);
+}
+
+/* —— 覆盖：战斗界面（显示力量 + 锁定提示） —— */
+function rFight(){
+var orbs='',nO=3+(G.upg.energy||0)+(HR('candle')?1:0);
+for(var i=0;i<nO;i++)orbs+='<i class="pip'+(i<B.en?'':' off')+'"></i>';
+var cnt=B.foes.length,w=cnt===1?225:cnt===2?155:118,fh='';
+for(var j=0;j<B.foes.length;j++)fh+=fH(B.foes[j],w,j);
+var cur=B.foes[B.tg]||B.foes[0];
+var pots='';
+for(var p=0;p<POT.length;p++){var n2=G.potions[POT[p].k]||0;
+pots+='<div class="pot'+(n2>0?' has':' empty')+'" data-a="usePot" data-k="'+POT[p].k+'">'+POT[p].i+(n2>0?'<b>'+n2+'</b>':'')+'</div>'}
+$('app').innerHTML='<div class="top"><div class="r1">'
++'<button class="bk" data-a="flee">←</button>'
++'<div class="hp"><div class="hn">'+Math.max(0,G.hp)+'<span class="hx">/'+G.max+'</span></div>'
++'<div class="hb"><i style="width:'+Math.max(0,G.hp/G.max*100)+'%"></i></div></div>'
++(B.pb>0?'<div class="blkp">🛡 '+B.pb+'</div>':'')
++(B.str>0?'<div class="pwr">⚔ '+B.str+'</div>':'')
++'<div class="sb"><div class="sl"><span>SAN</span><b>'+Math.max(0,G.san)+'</b></div>'
++'<div class="sbk"><i style="width:'+Math.max(0,G.san)+'%"></i></div></div>'
++'<button class="bk" data-a="help">?</button></div>'
++'<div class="or">'+orbs+'<div class="pots">'+pots+'</div>'
++'<div class="di">'+(NW?'第 '+NW.run+' 夜':'第 '+B.n+' 层')+'<br>抽 '+B.draw.length+' · 弃 '+B.disc.length+'</div></div></div>'
++'<div class="ar"><div class="cb'+(B.ch>1?' on':'')+'">连锁 '+B.ch+' · ×'+CM(B.ch).toFixed(1)+'</div>'
++heroSVG()+'<div class="fs">'+fh+'</div><div class="sty">'+(cur?cur.story:'')+'</div></div>'
++'<div class="btm"><div class="hrow"><div class="hand">'
++B.hand.map(function(k,i){return cH(k,i)}).join('')
++'</div><button class="end'+(B.lock?' lock':'')+'" data-a="end">'+(B.lock?'…':'结束<br>回合')+'</button></div></div>';
+}
+
+/* —— 覆盖：回合结束（能量强化生效） —— */
+function endTurn(){
+if(!B||B.over||B.lock)return;
+if(B.foes.some(function(f){return f.ch&&!f.dead})){tension()}
+var ws=0;for(var i=0;i<B.hand.length;i++)if(B.hand[i]==='whisper')ws++;
+if(ws){G.san-=5*ws;T('低语 · 理智 -'+(5*ws));S.whisper()}
+B.hand=[];var pen=0;
+for(var j=0;j<B.foes.length;j++){
+var f=B.foes[j];if(f.dead)continue;
+if(f.pv==='armor')f.blk=(f.blk||0)+7;
+if(f.pv==='regen')f.hp=Math.min(f.max,f.hp+5);
+if(f.pv==='drain')pen=1;
+f.tick=(f.tick||0)+1;
+var ult=false;
+if(f.ch){ult=true;f.ch=false;f.tick=0}
+else if(f.tick>=4){f.ch=true;S.charge();T(f.n+' 正在蓄力！');continue}
+var times=(f.pv==='swift')?2:1;
+for(var tt=0;tt<times;tt++){
+var raw=f.atk+((f.wd||0)>0?-3:0);
+if(ult)raw=Math.round(raw*1.8);
+if(times===2)raw=Math.round(raw*0.6);
+var ab=Math.min(B.pb,raw);B.pb-=ab;raw-=ab;
+if(raw>0){G.hp-=raw;var s2=S[f.snd];if(s2)s2();else S.hurt();
+FL('r');SK();
+var hr=document.querySelector('.hr');if(hr){hr.classList.add('hit');setTimeout(function(){hr.classList.remove('hit')},180)}}
+}
+if(ult){S.ult();FL('r');SK();T(f.n+' 重击！')}
+f.blk=0;
+if(f.pv==='wail'&&f.tick%3===0){if(B.hand.length<8){B.hand.push('whisper');S.whisper()}}
+if(f.burn>0){f.hp-=f.burn;f.burn--;if(f.hp<=0)f.dead=true}
+if(f.wd>0)f.wd--;
+}
+var bs=3+Math.floor(B.n*0.12);
+if(HR('mask'))bs=Math.round(bs*0.6);
+G.san-=bs;if(G.san<0)G.san=0;
+B.pb=0;
+if(G.san<=0){G.hp-=6;T('理智耗尽 · 生命 -6')}
+if(G.hp<=0){B.over=true;setTimeout(lose,280);return}
+if(alive().length===0){B.over=true;setTimeout(winF,280);return}
+B.en=Math.max(1,3+(G.upg.energy||0)+(HR('candle')?1:0)-pen);B.turn++;
+dN((HR('candle')?4:5)+(G.weapon==='wand'?1:0));
+T('新回合 · 抽 '+((HR('candle')?4:5)+(G.weapon==='wand'?1:0))+' 张 · 理智 -'+bs);
+if(G.hp/G.max<0.3)setTimeout(function(){heart(.18)},300);
+render();
+}
 </script>
 </body>
 </html>
