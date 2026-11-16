@@ -2036,6 +2036,99 @@ document.addEventListener('click',function(e){
 var t=e.target.closest('[data-a]');if(!t)return;
 if(t.getAttribute('data-a')==='testEnh'){showEnh();return}
 });
+/* ===== 补丁：移除设置里的自检 + 弃牌反馈 ===== */
+(function(){
+var css='.hand.discard{transition:transform .2s ease-in,opacity .2s ease-in;'
++'transform:translateX(-60px);opacity:0}'
++'.hand.drawin .card{animation:drawin .3s ease-out backwards}'
++'@keyframes drawin{from{opacity:0;transform:translateX(50px) rotateY(-40deg)}}';
+var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+})();
+
+/* —— 覆盖：设置页（去掉符文自检） —— */
+function rSet(){
+$('app').innerHTML='<div class="pg"><div class="hd"><button class="bk" data-a="toHome">←</button><div class="tt">设 置</div></div>'
++'<div class="sh"><div class="sr"><div><div>昵称</div><div class="dm">'+G.nick+'</div></div>'
++'<button class="sm" data-a="nick">修改</button></div></div>'
++'<div class="sh"><div class="sr"><div><div>音效</div><div class="dm">出牌、命中、低语</div></div>'
++'<button class="sm'+(G.sfx?' on':'')+'" data-a="tgSfx">'+(G.sfx?'开':'关')+'</button></div></div>'
++'<div class="sh"><div class="sr"><div><div>守夜人纪录</div></div><b>'+G.nwBest+' 夜</b></div>'
++'<div class="sr"><div><div>历史最高层数</div></div><b>第 '+Math.max(G.record||0,G.best)+' 层</b></div>'
++'<div class="sr"><div><div>当前进度</div></div><b>第 '+(G.best+1)+' 层</b></div></div>'
++'<div class="sh"><div class="sr" data-a="contact"><div><div>提意见 / 找作者</div>'
++'<div class="dm">2797800498@qq.com</div></div><b style="color:#f0dca8">写信</b></div></div>'
++'<div class="sh"><div class="sr"><div><div style="color:#e08a5a">清空存档</div>'
++'<div class="dm">所有进度会消失</div></div><button class="sm" data-a="reset" style="color:#e08a5a">清空</button></div></div>'
++'<div style="text-align:center;font-size:9px;color:#4e4a58;letter-spacing:.2em;margin-top:12px">v1.3 · THE LAST VIGIL</div></div>';
+}
+
+/* —— 覆盖：回合结束（加弃牌动画 + 更清楚的提示） —— */
+function endTurn(){
+if(!B||B.over||B.lock)return;
+if(B.foes.some(function(f){return f.ch&&!f.dead})){tension()}
+B.lock=true;
+
+/* 1. 手牌飞出 */
+var h=document.querySelector('.hand');
+var discarded=B.hand.length;
+if(h)h.classList.add('discard');
+
+setTimeout(function(){
+/* 2. 真正结算 */
+var ws=0;for(var i=0;i<B.hand.length;i++)if(B.hand[i]==='whisper')ws++;
+if(ws){G.san-=5*ws;T('低语 · 理智 -'+(5*ws));S.whisper()}
+B.hand=[];
+var pen=0;
+for(var j=0;j<B.foes.length;j++){
+var f=B.foes[j];if(f.dead)continue;
+if(f.pv==='armor')f.blk=(f.blk||0)+7;
+if(f.pv==='regen')f.hp=Math.min(f.max,f.hp+5);
+if(f.pv==='drain')pen=1;
+f.tick=(f.tick||0)+1;
+var ult=false;
+if(f.ch){ult=true;f.ch=false;f.tick=0}
+else if(f.tick>=4){f.ch=true;S.charge();T(f.n+' 正在蓄力！');continue}
+var times=(f.pv==='swift')?2:1;
+for(var tt=0;tt<times;tt++){
+var raw=f.atk+((f.wd||0)>0?-3:0);
+if(f.sk==='enrage'&&f.hp/f.max<0.3)raw=Math.round(raw*1.5);
+if(ult)raw=Math.round(raw*1.8);
+if(times===2)raw=Math.round(raw*0.6);
+var pbUse=B.pb;
+if(f.sk==='pierce')pbUse=Math.round(B.pb*0.5);
+var ab=Math.min(pbUse,raw);B.pb-=ab;raw-=ab;
+if(raw>0){G.hp-=raw;var s2=S[f.snd];if(s2)s2();else S.hurt();
+FL('r');SK();
+var hr=document.querySelector('.hr');if(hr){hr.classList.add('hit');setTimeout(function(){hr.classList.remove('hit')},180)}}
+}
+if(ult){S.ult();FL('r');SK();T(f.n+' 重击！')}
+if(f.sk==='shriek'&&f.tick%3===0){G.san-=8;S.whisper();T(f.n+' 尖啸 · 理智 -8')}
+f.blk=0;
+if(f.pv==='wail'&&f.tick%3===0){if(B.hand.length<8){B.hand.push('whisper');S.whisper()}}
+if(f.burn>0){f.hp-=f.burn;f.burn--;if(f.hp<=0)f.dead=true}
+if(f.wd>0)f.wd--;
+}
+var bs=3+Math.floor(B.n*0.12);
+if(HR('mask'))bs=Math.round(bs*0.6);
+G.san-=bs;if(G.san<0)G.san=0;
+B.pb=0;
+if(G.san<=0){G.hp-=6;T('理智耗尽 · 生命 -6')}
+if(G.hp<=0){B.over=true;B.lock=false;setTimeout(lose,280);return}
+if(alive().length===0){B.over=true;B.lock=false;setTimeout(winF,280);return}
+B.en=Math.max(1,3+(G.upg.energy||0)+(HR('candle')?1:0)-pen);B.turn++;
+var dn=(HR('candle')?4:5)+(G.weapon==='wand'?1:0);
+dN(dn);
+if(G.hp/G.max<0.3)setTimeout(function(){heart(.18)},300);
+
+/* 3. 渲染 + 新牌滑入 */
+B.lock=false;
+render();
+var h2=document.querySelector('.hand');
+if(h2){h2.classList.add('drawin');
+setTimeout(function(){if(h2)h2.classList.remove('drawin')},400)}
+T('弃 '+discarded+' 张 · 抽 '+dn+' 张 · 理智 -'+bs);
+},200);
+}  
 </script>
 </body>
 </html>
