@@ -1287,6 +1287,128 @@ document.removeEventListener('pointerdown',once);
 /* —— 真正开始一局时也确保 BGM 在响 —— */
 var _sf=startFloor;
 function startFloor(n){_sf(n);ambStart()}  
+/* ===== 修复：重新定义三个函数，去掉自递归 ===== */
+function startFloor(n){
+G.max=44+HPM()+(G.upg.hp||0)*3;
+if(G.hp>G.max)G.hp=G.max;
+var isB=!!BS[n];
+var cnt=isB?1:(n<4?1:n<10?2:n<20?R(1,2):n<26?2:R(2,3));
+var m=1+(n-1)*(isB?0.075:0.1);
+var foes=[];
+if(isB){foes.push(mk(BS[n],m))}
+else{for(var i=0;i<cnt;i++){var t=F[R(0,F.length-1)];
+foes.push(mk(t,m*(cnt===1?1:cnt===2?0.62:0.46)));G.dexF[t.n]=1}}
+B={n:n,boss:isB,foes:foes,tg:0,en:3,turn:1,ch:0,ct:'',over:false,lock:false,
+hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
+dN(5+(HR('sand')?1:0)+(G.weapon==='wand'?1:0));
+if(isB){S.boss();FL('r');SK()}
+ambStart();
+go('fight');
+if(!G.tut)setTimeout(tutStart,700);
+}
+
+function endTurn(){
+if(!B||B.over||B.lock)return;
+if(B.foes.some(function(f){return f.ch&&!f.dead})){tension()}
+var ws=0;for(var i=0;i<B.hand.length;i++)if(B.hand[i]==='whisper')ws++;
+if(ws){G.san-=5*ws;T('低语 · 理智 -'+(5*ws));S.whisper()}
+B.hand=[];var pen=0;
+for(var j=0;j<B.foes.length;j++){
+var f=B.foes[j];if(f.dead)continue;
+if(f.pv==='armor')f.blk=(f.blk||0)+7;
+if(f.pv==='regen')f.hp=Math.min(f.max,f.hp+5);
+if(f.pv==='drain')pen=1;
+f.tick=(f.tick||0)+1;
+var ult=false;
+if(f.ch){ult=true;f.ch=false;f.tick=0}
+else if(f.tick>=4){f.ch=true;S.charge();T(f.n+' 正在蓄力！');continue}
+var times=(f.pv==='swift')?2:1;
+for(var tt=0;tt<times;tt++){
+var raw=f.atk+((f.wd||0)>0?-3:0);
+if(ult)raw=Math.round(raw*1.8);
+if(times===2)raw=Math.round(raw*0.6);
+var ab=Math.min(B.pb,raw);B.pb-=ab;raw-=ab;
+if(raw>0){G.hp-=raw;var s2=S[f.snd];if(s2)s2();else S.hurt();
+FL('r');SK();
+var hr=document.querySelector('.hr');if(hr){hr.classList.add('hit');setTimeout(function(){hr.classList.remove('hit')},180)}}
+}
+if(ult){S.ult();FL('r');SK();T(f.n+' 重击！')}
+f.blk=0;
+if(f.pv==='wail'&&f.tick%3===0){if(B.hand.length<8){B.hand.push('whisper');S.whisper()}}
+if(f.burn>0){f.hp-=f.burn;f.burn--;if(f.hp<=0)f.dead=true}
+if(f.wd>0)f.wd--;
+}
+var bs=3+Math.floor(B.n*0.12);
+if(HR('mask'))bs=Math.round(bs*0.6);
+G.san-=bs;if(G.san<0)G.san=0;
+B.pb=0;
+if(G.san<=0){G.hp-=6;T('理智耗尽 · 生命 -6')}
+if(G.hp<=0){B.over=true;setTimeout(lose,280);return}
+if(alive().length===0){B.over=true;setTimeout(winF,280);return}
+B.en=Math.max(1,3+(HR('candle')?1:0)-pen);B.turn++;
+dN((HR('candle')?4:5)+(G.weapon==='wand'?1:0));
+T('新回合 · 抽 '+((HR('candle')?4:5)+(G.weapon==='wand'?1:0))+' 张 · 理智 -'+bs);
+if(G.hp/G.max<0.3)setTimeout(function(){heart(.18)},300);
+render();
+}
+
+function PC(i){
+if(!B||B.over||B.lock)return;
+var k=B.hand[i];if(!k)return;
+if(k==='whisper'){if(B.en<1){T('需要 1 能量');return}
+B.en--;B.hand.splice(i,1);B.disc.push('whisper');T('撕毁了低语');render();return}
+var c=C[k];if(B.en<c.c){T('能量不足');return}
+var tf=tgt();
+B.lock=true;B.en-=c.c;S.play();render();
+var el=document.querySelector('.card[data-i="'+i+'"]');if(el)el.style.opacity='0';
+setTimeout(function(){
+B.hand.splice(i,1);
+var cm=CM(B.ch),wk=(tf&&c.t===tf.w)?2:1,am=0;
+if(c.rand){
+var d=Math.max(1,Math.round(R(1,28)*cm));
+setTimeout(function(){if(B.foes[B.tg]){HF(B.tg,d,2);var p=FR(B.tg);SLA(p.x,p.y)}S.hit()},140);
+am=220;
+}else if(c.coin){
+var win=Math.random()<0.5;
+setTimeout(function(){
+if(win){if(B.foes[B.tg])HF(B.tg,40,3);S.crit();FL('g')}
+else{G.hp-=8;S.hurt();T('赌输了 · 自伤 8')}
+},140);
+am=280;
+}else{
+if(G.weapon==='dagger'&&c.c===0){}
+else if(c.t===B.ct)B.ch++;else B.ch=1;
+B.ct=c.t;
+if(c.dmg){
+var ti=B.tg,base=c.dmg+B.str+(HR('blood')?2:0)+DM();
+if(c.t==='f'&&HR('ember'))base+=3;
+var d2=Math.max(1,Math.round(base*cm*wk)),hs=c.hits||1;
+for(var h=0;h<hs;h++){(function(k2){setTimeout(function(){
+if(B.foes[ti]){var one=Math.round(d2/hs);HF(ti,one,wk>1?3:(B.ch>=4?3:B.ch>=2?2:1));
+if(k2===0){var p=FR(ti);SLA(p.x,p.y)}}S.hit();},k2*90)})(h)}
+am=hs*90;if(wk>1)T('击中破绽！×2');
+}
+if(c.dmgAll){for(var q=0;q<B.foes.length;q++){if(!B.foes[q].dead){HF(q,Math.round((c.dmgAll+B.str)*cm),2);am+=80}}}
+if(c.blk){B.pb+=c.blk+(HR('iron')?2:0)+(G.weapon==='shield'?3:0);S.block()}
+if(c.pow)B.str+=c.pow;
+if(c.heal)G.hp=Math.min(G.max,G.hp+c.heal);
+if(c.self)G.hp-=c.self;
+if(c.burn&&tf)tf.burn=(tf.burn||0)+c.burn;
+if(c.burnAll)B.foes.forEach(function(f){if(!f.dead)f.burn=(f.burn||0)+c.burnAll});
+if(c.draw)dN(c.draw);
+if(c.weak&&tf)tf.wd=(tf.wd||0)+c.weak;
+B.disc.push(k);G.dexC[k]=1;
+if(B.ch>=3)FL('g');
+if(c.q>=4){S.epic();FL('g')}
+}
+setTimeout(function(){
+B.lock=false;
+if(alive().length===0){B.over=true;setTimeout(winF,170);return}
+if(G.hp<=0){B.over=true;setTimeout(lose,170);return}
+render();
+},am+260);
+},140);
+}  
 </script>
 </body>
 </html>
