@@ -1853,6 +1853,139 @@ T('新回合 · 抽 '+((HR('candle')?4:5)+(G.weapon==='wand'?1:0))+' 张 · 理�
 if(G.hp/G.max<0.3)setTimeout(function(){heart(.18)},300);
 render();
 }
+/* ===== 补丁：装备（卡牌附魔）系统 ===== */
+(function(){
+var css='.enhcard{display:block;width:100%;padding:14px;border-radius:11px;margin-top:10px;text-align:left;'
++'background:linear-gradient(160deg,#2a2338,#161220);border:1px solid #5a4a30;color:#e8e0d0}'
++'.enhcard:active{background:#332a44}'
++'.enhcard .en{font-family:"Songti SC",serif;font-size:15px;color:#ffe8b0}'
++'.enhcard .ed{font-size:11px;color:#8a8497;margin-top:4px;line-height:1.6}'
++'.enhmark{position:absolute;top:-8px;right:-8px;font-size:11px;z-index:4;'
++'background:rgba(40,30,50,.95);border:1px solid #8a6a3a;border-radius:50%;width:20px;height:20px;'
++'display:grid;place-items:center}';
+var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+})();
+
+if(!G.enh)G.enh={};
+
+var ENH={
+sharp:{n:'锐利',i:'⚔',d:'这类牌伤害 +3'},
+thorn:{n:'反甲',i:'🛡',d:'这类牌额外获得 5 格挡'},
+burn:{n:'灼烧',i:'🔥',d:'这类牌额外造成 4 点灼烧'},
+cheap:{n:'节能',i:'⚡',d:'这类牌费用 -1（最低 0）'},
+drain:{n:'汲取',i:'🩸',d:'这类牌造成伤害时回复 3 生命'}
+};
+
+function enhApply(k,e,silent){
+if(!C[k]||!ENH[e])return;
+if(e==='sharp')C[k].dmg=(C[k].dmg||0)+3;
+if(e==='thorn')C[k].blk=(C[k].blk||0)+5;
+if(e==='burn')C[k].burn=(C[k].burn||0)+4;
+if(e==='cheap')C[k].c=Math.max(0,(C[k].c||1)-1);
+if(e==='drain')C[k].heal=(C[k].heal||0)+3;
+if(!silent){G.enh[k]=e;SAVE()}
+}
+
+/* 启动时恢复已附魔的牌 */
+(function(){
+for(var k in G.enh){enhApply(k,G.enh[k],true)}
+})();
+
+/* —— 生成 3 个附魔选项 —— */
+function rollEnh(){
+var pool=[];
+for(var k in C){if(C[k].q>0&&C[k].q<=4&&G.deck.indexOf(k)>=0&&!G.enh[k])pool.push(k)}
+var out=[],ek=Object.keys(ENH);
+while(out.length<3&&pool.length>0){
+var k2=pool[R(0,pool.length-1)];
+var e=ek[R(0,ek.length-1)];
+out.push({k:k2,e:e});
+pool=pool.filter(function(x){return x!==k2});
+}
+return out;
+}
+
+var ENHPICK=null;
+function showEnh(){
+ENHPICK=rollEnh();
+if(!ENHPICK.length){go('map');return}
+var d=document.createElement('div');d.className='mask';d.id='enhmask';
+var html='<div class="dlg" style="max-width:340px"><h2 style="color:#ffe8b0">符 文</h2>'
++'<p style="font-size:11px;color:#a8a2b6">挑一个，永久烙进你的牌里。<br>它对牌组里每一张同类牌都生效。</p>';
+for(var i=0;i<ENHPICK.length;i++){
+var it=ENHPICK[i],c=C[it.k],e=ENH[it.e];
+html+='<button class="enhcard" data-a="enh" data-v="'+i+'">'
++'<div class="en">'+e.i+' '+e.n+'的'+c.n+'</div>'
++'<div class="ed">'+c.d+'<br><span style="color:#ffb0a0">'+e.d+'</span></div></button>';
+}
+html+='<button class="db3" data-a="enhskip">跳过</button></div>';
+d.innerHTML=html;
+document.body.appendChild(d);
+}
+
+/* —— 覆盖：选牌后，Boss 层触发符文 —— */
+function pickCard(idx){
+if(!PICKS||!PICKS[idx])return;
+G.deck.push(PICKS[idx]);G.dexC[PICKS[idx]]=1;
+if(RELIC)G.relics.push(RELIC);
+PICKS=null;RELIC=null;SAVE();
+if(NW){nextNight();return}
+var justBoss=(SUMM&&SUMM.n>0&&SUMM.n%10===0);
+if(justBoss){showEnh();return}
+go('map');
+}
+
+/* —— 覆盖：卡牌渲染，显示附魔标记 —— */
+function cH(k,i,ex){
+var c=C[k],cs=(k==='whisper');
+var mark='';
+if(G.enh[k]&&ENH[G.enh[k]])mark='<div class="enhmark">'+ENH[G.enh[k]].i+'</div>';
+return '<div class="card q'+(c.q||1)+(B&&B.en<c.c&&!cs?' no':'')+'" data-i="'+i+'"'+(ex?' style="'+ex+'"':'')+'>'
++'<div class="fr"></div><div class="in"><div class="gm">'+(cs?'✖':c.c)+'</div>'
++mark
++'<div class="art"><svg viewBox="0 0 24 24" stroke-width="1.5" fill="none">'+IC[c.ic]+'</svg></div>'
++'<div class="nm">'+c.n+'</div><div class="ds">'+c.d+'</div></div></div>';
+}
+
+/* —— 新增按钮处理 —— */
+document.addEventListener('click',function(e){
+var t=e.target.closest('[data-a]');if(!t)return;
+var a=t.getAttribute('data-a'),v=parseInt(t.getAttribute('data-v'),10);
+if(a==='enh'){
+var it=ENHPICK&&ENHPICK[v];if(!it)return;
+enhApply(it.k,it.e);
+var ms=document.querySelectorAll('.mask');for(var i=0;i<ms.length;i++)ms[i].remove();
+S.epic();T('符文已烙入：'+ENH[it.e].n+'的'+C[it.k].n);
+go('map');return;
+}
+if(a==='enhskip'){
+var ms2=document.querySelectorAll('.mask');for(var j=0;j<ms2.length;j++)ms2[j].remove();
+go('map');return;
+}
+if(a==='remake'){
+if(G.gold<60){T('金币不足（需 60）');return}
+G.gold-=60;SAVE();
+PICKS=rollR();rollRel();render();T('重新抽取');
+return;
+}
+});
+
+/* —— 覆盖：奖励页，加"重抽"按钮 —— */
+function rRew(){
+$('app').innerHTML='<div class="sum"><div class="stt" style="font-size:19px">选 一 张 牌</div>'
++'<div style="text-align:center;font-size:11px;color:#8a8497;margin-top:8px">点卡牌 → 加入牌堆（'+G.deck.length+' → '+(G.deck.length+1)+' 张）</div>'
++(RELIC?'<div class="sh" style="margin-top:14px"><div style="font-size:9.5px;color:#a89870;letter-spacing:.2em">遗 物</div>'
++'<div style="font-size:15px;color:#ffeec2;margin-top:4px">'+RL[RELIC].n+'</div>'
++'<div style="font-size:11px;color:#a8a2b6;margin-top:3px">'+RL[RELIC].d+'</div></div>':'')
++'<div class="pr">'+(PICKS||[]).map(function(k,i){var c=C[k];
+return '<div style="display:flex;flex-direction:column;align-items:center" data-a="pick" data-v="'+i+'">'
++cH(k,i,'width:86px;height:124px')+'<div class="ql" style="color:'+QC[c.q]+'">'+QN[c.q]+'</div></div>'}).join('')+'</div>'
++'<div style="flex:1"></div>'
++'<div style="display:flex;gap:8px;margin-top:14px">'
++'<button class="btn" data-a="remake" style="flex:1;font-size:12px;padding:12px">重抽 ◈60</button>'
++'<button class="btn" data-a="skip" style="flex:1;font-size:12px;padding:12px">跳过</button>'
++'</div></div>';
+}
 </script>
 </body>
 </html>
