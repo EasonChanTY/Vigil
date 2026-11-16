@@ -980,7 +980,313 @@ PICKS=null;RELIC=null;SAVE();
 if(NW)nextNight();else go('map');
 },440);
 }
-  
+
+/* ===== 补丁 v2：死亡重置 / 升级 / 复活 / 商店扩充 ===== */
+if(!G.upg)G.upg={hp:0,blk:0,chain:0};
+if(!G.items)G.items={revive:0};
+if(!G.ownedAv)G.ownedAv=[0];
+
+/* —— 更多头像 —— */
+AV.push({id:4,col:'#7affb0',p:600},{id:5,col:'#ff7a4a',p:800},
+{id:6,col:'#c8a0ff',p:1100},{id:7,col:'#ffe08a',p:1500});
+
+/* —— 永久强化 —— */
+var UPG=[
+{id:'hp',n:'生命强化',d:'生命上限 +3',max:5,p:[200,400,700,1100,1800]},
+{id:'blk',n:'护甲强化',d:'每层开局格挡 +1',max:3,p:[250,600,1300]},
+{id:'chain',n:'连锁强化',d:'连锁倍率 +0.05',max:3,p:[400,900,1900]}
+];
+
+/* —— 奇葩卡（可购买，永久进牌堆） —— */
+C.chaos={n:'混沌',c:1,d:'随机 1~28 伤害',t:'p',ic:'bolt',q:3,dmg:14,rand:1};
+C.gamble={n:'赌命',c:1,d:'50% 伤害 40 / 50% 自伤 8',t:'a',ic:'skull',q:4,dmg:40,coin:1};
+C.mirror={n:'镜像',c:0,d:'抽 3 张',t:'p',ic:'eye',q:3,draw:3};
+var SCARDS=[{k:'chaos',p:500},{k:'gamble',p:700},{k:'mirror',p:600}];
+
+/* —— 覆盖：连锁倍率加升级 —— */
+function CM(n){
+var b=n<=1?1:n===2?1.6:n===3?2.2:2.9;
+if(G.weapon==='sword')b+=0.5;
+if(HR('tail'))b+=0.3;
+b+=(G.upg.chain||0)*0.05;
+return b;
+}
+
+/* —— 覆盖：开局加护甲 + 重算生命上限 —— */
+function startFloor(n){
+G.max=44+HPM()+(G.upg.hp||0)*3;
+if(G.hp>G.max)G.hp=G.max;
+var isB=!!BS[n];
+var cnt=isB?1:(n<4?1:n<10?2:n<20?R(1,2):n<26?2:R(2,3));
+var m=1+(n-1)*(isB?0.075:0.1);
+var foes=[];
+if(isB){foes.push(mk(BS[n],m))}
+else{for(var i=0;i<cnt;i++){var t=F[R(0,F.length-1)];
+foes.push(mk(t,m*(cnt===1?1:cnt===2?0.62:0.46)));G.dexF[t.n]=1}}
+B={n:n,boss:isB,foes:foes,tg:0,en:3,turn:1,ch:0,ct:'',over:false,lock:false,
+hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
+dN(5+(HR('sand')?1:0)+(G.weapon==='wand'?1:0));
+if(isB){S.boss();FL('r');SK()}
+go('fight');
+if(!G.tut)setTimeout(tutStart,700);
+}
+
+/* —— 覆盖：混沌 / 赌命 的特殊结算 —— */
+var _PC=PC;
+function PC(i){
+if(!B||B.over||B.lock)return;
+var k=B.hand[i];if(!k)return;
+if(k==='whisper'){if(B.en<1){T('需要 1 能量');return}
+B.en--;B.hand.splice(i,1);B.disc.push('whisper');T('撕毁了低语');render();return}
+var c=C[k];if(B.en<c.c){T('能量不足');return}
+if(c.rand||c.coin){
+B.lock=true;B.en-=c.c;B.hand.splice(i,1);B.disc.push(k);SFX_play();render();
+var tf=tgt(),ti=B.tg;
+if(c.rand){
+var d=Math.max(1,Math.round(R(1,28)*CM(B.ch)));
+setTimeout(function(){if(B.foes[ti])HF(ti,d,2);S.hit();SLAt(ti)},140);
+}else{
+var win=Math.random()<0.5;
+setTimeout(function(){
+if(win){if(B.foes[ti])HF(ti,40,3);S.crit();FL('g')}
+else{G.hp-=8;S.hurt();T('赌输了 · 自伤 8')}
+},140);
+}
+setTimeout(function(){B.lock=false;
+if(alive().length===0){B.over=true;setTimeout(winF,180);return}
+if(G.hp<=0){B.over=true;setTimeout(lose,180);return}
+render()},500);
+return;
+}
+_PC(i);
+}
+function SFX_play(){S.play()}
+function SLAt(ti){var p=FR(ti);SLA(p.x,p.y)}
+
+/* —— 覆盖：死亡 → 真正重置 + 复活选项 —— */
+function lose(){
+S.die();
+if(NW){var r=NW.run;NW=null;G.hp=G.max;G.san=100;G.nwBest=Math.max(G.nwBest,r);
+G.best=0;resetDeck();SAVE();
+var d0=document.createElement('div');d0.className='mask';
+d0.innerHTML='<div class="dlg"><h2 style="color:#e89a8a">守夜结束</h2><p>你守住了 '+r+' 夜<br>最高 '+G.nwBest+' 夜</p>'
++'<button class="db2" data-a="toHome">回主菜单</button></div>';
+document.body.appendChild(d0);return}
+var n=B?B.n:G.best+1;
+var canRev=(G.items.revive||0)>0;
+var h=(G.san<25)?'理智耗尽了。你听得太久——下次要在它开口前结束。'
+:(n>15?'第 '+n+' 层的东西比你想的硬。':'它没有变强。是你出手的顺序不对。');
+var d=document.createElement('div');d.className='mask';
+d.innerHTML='<div class="dlg"><h2 style="color:#e89a8a">你在第 '+n+' 层倒下了</h2><p>'+h+'</p>'
++(canRev?'<button class="db2" data-a="revive">用烛芯复活（剩 '+G.items.revive+'）</button>':'')
++'<button class="db2" data-a="hardreset" style="'+(canRev?'background:linear-gradient(#3a3248,#221c30);color:#e0d8c8;margin-top:8px':'')+'">从 第 1 层 重来</button>'
++'<button class="db3" data-a="hardreset">回主菜单</button></div>';
+document.body.appendChild(d);
+}
+function resetDeck(){
+var wd=null;for(var i=0;i<WP.length;i++)if(WP[i].id===G.weapon)wd=WP[i];
+G.deck=wd?wd.dk.slice():['strike','strike','strike','strike','defend','defend','defend','heavy'];
+G.relics=[];G.picked=G.picked;
+}
+function hardReset(){
+G.best=0;G.hp=G.max;G.san=100;resetDeck();SAVE();
+var ms=document.querySelectorAll('.mask');for(var i=0;i<ms.length;i++)ms[i].remove();
+go('home');
+}
+function reviveNow(){
+G.items.revive--;G.hp=Math.round(G.max*0.5);G.san=Math.max(30,G.san-10);
+if(B){B.over=false;B.lock=false;var j;
+for(j=0;j<B.foes.length;j++){if(B.foes[j].dead||B.foes[j].hp<=0){continue}}
+}
+SAVE();
+var ms=document.querySelectorAll('.mask');for(var i=0;i<ms.length;i++)ms[i].remove();
+if(B){B.over=false;render()}else go('map');
+T('烛芯燃起 · 回复 50% 生命');
+}
+
+/* —— 新建按钮事件（追加监听） —— */
+document.addEventListener('click',function(e){
+var t=e.target.closest('[data-a]');if(!t)return;
+var a=t.getAttribute('data-a');
+if(a==='revive'){reviveNow();return}
+if(a==='hardreset'){hardReset();return}
+if(a==='buyUpg'){
+var id=t.getAttribute('data-k');
+for(var i=0;i<UPG.length;i++){if(UPG[i].id===id){
+var lv=G.upg[id]||0;
+if(lv>=UPG[i].max){T('已满级');return}
+var pr=UPG[i].p[lv];
+if(G.gold<pr){T('金币不足（需 '+pr+'）');return}
+G.gold-=pr;G.upg[id]=lv+1;S.coin();SAVE();render();T(UPG[i].n+' 升到 '+(lv+1)+' 级');return}}
+return}
+if(a==='buyItem'){
+if(G.gold<120){T('金币不足');return}
+G.gold-=120;G.items.revive=(G.items.revive||0)+1;S.coin();SAVE();render();T('获得烛芯 ×1');return}
+if(a==='buyCard'){
+var k=t.getAttribute('data-k');
+for(var j=0;j<SCARDS.length;j++){if(SCARDS[j].k===k){
+if(G.deck.indexOf(k)>=0){T('已拥有');return}
+if(G.gold<SCARDS[j].p){T('金币不足');return}
+G.gold-=SCARDS[j].p;G.deck.push(k);G.dexC[k]=1;S.epic();SAVE();render();T('已加入牌堆：'+C[k].n);return}}
+return}
+});
+
+/* —— 覆盖：商店 —— */
+function rShop(){
+var up='';
+for(var i=0;i<UPG.length;i++){var u=UPG[i],lv=G.upg[u.id]||0,full=lv>=u.max,pr=full?0:u.p[lv];
+up+='<div class="sr"><div><div>'+u.n+' <span style="color:#8a8497;font-size:11px">Lv.'+lv+'/'+u.max+'</span></div>'
++'<div class="dm">'+u.d+'</div></div>'
++(full?'<button class="sm" style="opacity:.4">已满</button>'
+:'<button class="sm" data-a="buyUpg" data-k="'+u.id+'">◈ '+pr+'</button>')+'</div>'}
+var avs='';
+for(var i2=0;i2<AV.length;i2++){var a=AV[i2],own=G.ownedAv.indexOf(a.id)>=0,cur=G.avatar===a.id;
+avs+='<div class="sr"><div style="display:flex;align-items:center;gap:10px">'
++'<div style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#2c2438,#12101a);border:1px solid rgba(232,200,138,.4)">'+avSVG(a.id,28)+'</div>'
++'<div><div>头像 '+(i2+1)+'</div><div class="dm">'+(own?(cur?'使用中':'已拥有'):'◈ '+a.p)+'</div></div></div>'
++(own?('<button class="sm'+(cur?' on':'')+'" data-a="avUse" data-v="'+a.id+'">'+(cur?'使用中':'使用')+'</button>')
+:('<button class="sm" data-a="avBuy" data-v="'+a.id+'">◈ '+a.p+'</button>'))+'</div>'}
+var cards='';
+for(var j=0;j<SCARDS.length;j++){var sc=SCARDS[j],cc=C[sc.k],own2=G.deck.indexOf(sc.k)>=0;
+cards+='<div class="sr"><div><div style="color:'+QC[cc.q]+'">'+cc.n+'</div><div class="dm">'+cc.d+'</div></div>'
++(own2?'<button class="sm" style="opacity:.4">已拥有</button>'
+:'<button class="sm" data-a="buyCard" data-k="'+sc.k+'">◈ '+sc.p+'</button>')+'</div>'}
+$('app').innerHTML='<div class="pg"><div class="hd"><button class="bk" data-a="toHome">←</button>'
++'<div class="tt">商 店</div><div class="ct">◈ '+G.gold+'</div></div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">永 久 强 化</div>'+up+'</div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">道 具</div>'
++'<div class="sr"><div><div>烛芯（复活）</div><div class="dm">死亡时复活一次 · 持有 '+(G.items.revive||0)+'</div></div>'
++'<button class="sm" data-a="buyItem">◈ 120</button></div></div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">奇 葩 卡</div>'+cards+'</div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">头 像</div>'+avs+'</div></div>';
+}
+/* ===== 补丁：恐怖 BGM + 关键时刻音效 ===== */
+if(!G.bgm)G.bgm=true;
+
+var AMB={on:false,master:null,nodes:[],t1:null,t2:null};
+var RVN=null;
+
+function chk(){return ACf()}
+
+function ambStart(){
+var c=chk();if(!c||AMB.on)return;
+AMB.on=true;
+var m=c.createGain();m.gain.value=0;m.connect(MG);
+m.gain.linearRampToValueAtTime(.13,c.currentTime+5);
+AMB.master=m;
+function osc(f,tp,g0){
+var o=c.createOscillator();o.type=tp;o.frequency.value=f;
+var g=c.createGain();g.gain.value=g0;
+o.connect(g);g.connect(m);o.start();AMB.nodes.push(o);
+return o;
+}
+osc(55,'sine',.55);
+osc(58.27,'sine',.32);
+osc(27.5,'triangle',.42);
+osc(110,'sine',.1);
+var lfo=c.createOscillator();lfo.frequency.value=.055;
+var lg=c.createGain();lg.gain.value=.06;
+lfo.connect(lg);lg.connect(m.gain);lfo.start();AMB.nodes.push(lfo);
+var lfo2=c.createOscillator();lfo2.frequency.value=.13;
+var lg2=c.createGain();lg2.gain.value=.03;
+lfo2.connect(lg2);lg2.connect(m.gain);lfo2.start();AMB.nodes.push(lfo2);
+AMB.t1=setInterval(function(){if(AMB.on)ambHit()},3800);
+AMB.t2=setInterval(function(){
+if(!AMB.on)return;
+if(AMB.master)AMB.master.gain.value=G.sfx?(G.bgm?.13:0):0;
+if(!B||B.over)return;
+var hp=G.hp/G.max,san=G.san/100;
+if(hp<0.18)heart(.2);
+else if(hp<0.34||san<0.2)heart(.13);
+},1900);
+}
+
+function ambHit(){
+if(!G.sfx||!G.bgm)return;
+var r=Math.random();
+if(r<0.22){V(1300,700,.45,'sine',.035,.75)}
+else if(r<0.4){V(42,30,2.6,'sine',.075,.92)}
+else if(r<0.55){V(2400,1600,.6,'sawtooth',.022,.85)}
+else if(r<0.7){V(48,44,1.3,'sine',.045,.9)}
+else if(r<0.84){V(180,140,.25,'square',.05,.4)}
+else if(r<0.94){V(620,180,1.4,'sawtooth',.03,.85)}
+else{V(90,60,2.2,'triangle',.05,.95)}
+}
+
+function heart(v){
+V(58,38,.17,'sine',v,.15);
+setTimeout(function(){V(50,32,.22,'sine',v*.65,.15)},200);
+}
+
+function tension(){
+for(var i=0;i<9;i++){(function(k){
+setTimeout(function(){V(85+k*24,78+k*24,.36,'sawtooth',.045,.75)},k*130)
+})(i)}
+V(38,38,1.8,'sine',.1,.85);
+}
+
+/* —— 覆盖关键音效 —— */
+S.charge=function(){tension()};
+S.boss=function(){
+V(36,0,.9,'sine',.32,.8);
+V(54,0,.75,'sine',.14,.8);
+V(108,0,.6,'triangle',.06,.7);
+setTimeout(function(){V(36,0,1.2,'sine',.24,.85)},520);
+};
+S.ult=function(){
+V(90,22,.8,'sawtooth',.32,.7);
+V(46,18,.9,'sine',.24,.8);
+};
+S.hurt=function(){
+V(88,28,.55,'sawtooth',.2,.55);
+V(210,90,.2,'square',.09,.3);
+};
+S.die=function(){
+V(300,26,2.8,'sine',.22,.95);
+V(150,40,2.4,'triangle',.1,.9);
+setTimeout(function(){V(40,30,3,'sine',.16,.95)},600);
+};
+S.whisper=function(){
+V(46,0,2,'sine',.15,.95);
+V(58,0,2,'sine',.08,.95);
+V(700,520,1.4,'sine',.02,.9);
+};
+S.epic=function(){
+V(240,2000,.8,'sawtooth',.12,.7);
+V(523,0,1.2,'sine',.09,.8);
+setTimeout(function(){V(784,0,1,'sine',.07,.85)},140);
+};
+S.win=function(){
+V(392,0,.5,'sine',.1,.6);
+setTimeout(function(){V(523,0,.6,'sine',.1,.6)},130);
+setTimeout(function(){V(784,0,1.4,'sine',.1,.75)},260);
+};
+S.coin=function(){
+V(1500,0,.12,'triangle',.09,.3);
+setTimeout(function(){V(2000,0,.2,'triangle',.06,.35)},55);
+};
+
+/* —— 覆盖结束回合：加入低血预警 + 更恐怖 —— */
+var _endTurn=endTurn;
+function endTurn(){
+if(!B||B.over||B.lock)return;
+if(B.foes.some(function(f){return f.ch&&!f.dead})){tension()}
+_endTurn();
+if(B&&!B.over){
+var hp=G.hp/G.max;
+if(hp<0.3)setTimeout(function(){heart(.18)},300);
+}
+}
+
+/* —— 第一次点击启动 BGM —— */
+document.addEventListener('pointerdown',function once(){
+ACf();ambStart();
+document.removeEventListener('pointerdown',once);
+},{once:true});
+
+/* —— 真正开始一局时也确保 BGM 在响 —— */
+var _sf=startFloor;
+function startFloor(n){_sf(n);ambStart()}  
 </script>
 </body>
 </html>
