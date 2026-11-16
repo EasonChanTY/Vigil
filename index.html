@@ -1408,6 +1408,94 @@ if(G.hp<=0){B.over=true;setTimeout(lose,170);return}
 render();
 },am+260);
 },140);
+} 
+/* ===== 补丁：伤害意图 + 目标标记 + 强化扩充 + 无尽降难 ===== */
+(function(){
+var css='.it{position:absolute;top:-30px;left:50%;transform:translateX(-50%);font-family:"Songti SC",serif;font-size:11px;padding:2px 8px;border-radius:6px;background:rgba(20,12,26,.96);border:1px solid rgba(255,140,90,.45);color:#ffb090;white-space:nowrap;z-index:6}'
++'.it.ult2{color:#ff5a3a;border-color:#ff5a3a;box-shadow:0 0 14px rgba(255,60,40,.7);animation:itp .8s infinite}'
++'@keyframes itp{50%{opacity:.6}}'
++'.it.chg{color:#ffd24a;border-color:#ffd24a}'
++'.tgmark{position:absolute;top:-52px;left:50%;transform:translateX(-50%);color:#ffe08a;font-size:15px;text-shadow:0 0 12px #ffe08a;animation:tgm 1s infinite;z-index:7}'
++'@keyframes tgm{50%{transform:translateX(-50%) translateY(5px)}}'
++'.foe.sel .fb{filter:drop-shadow(0 0 22px rgba(255,215,150,.75))}'
++'.bt2{top:-48px!important}';
+var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+})();
+
+/* —— 覆盖：怪物意图 + 目标标记 —— */
+function fH(f,w,idx){
+var col=FC[f.n]||'#ffe08a';
+var s='';
+for(var i=0;i<f.e.length;i++){var e=f.e[i];
+s+='<div class="ew '+(i===1?'d1':i===2?'d2':'')+'" style="left:'+e[0]+'%;top:'+e[1]+'%;width:'+e[2]+'%;height:'+e[2]+'%;margin-left:-'+(e[2]/2)+'%;margin-top:-'+(e[2]/2)+'%"><div class="ey" style="--c:'+col+'"></div></div>'}
+var pv=PV[f.pv],isB=B.boss,sel=(B.tg===idx);
+var it='';
+if(!f.dead){
+if(f.ch)it='<div class="it ult2">⚠ '+Math.round(f.atk*1.8)+'</div>';
+else if(f.tick>=3)it='<div class="it chg">⚡ 蓄力</div>';
+else if(f.pv==='swift')it='<div class="it">⚔ '+Math.round(f.atk*0.6)+'×2</div>';
+else if(f.blk>0)it='<div class="it">🛡 '+f.blk+'</div>';
+else it='<div class="it">⚔ '+f.atk+'</div>';
+}
+return '<div class="foe'+(sel?' sel':'')+(f.dead?' dead':'')+(isB?' boss':'')+'" data-f="'+idx+'">'
++(sel?'<div class="tgmark">▼</div>':'')
++(isB?'<div class="bt2" style="color:'+col+'">B O S S</div>':'')
++it
++'<div class="fb" style="width:'+w+'px;height:'+w+'px">'
++(isB?'<div class="bh" style="border-color:'+col+'55;box-shadow:0 0 44px '+col+'55 inset"></div>':'')
++'<div class="ms"></div><div class="ms2"></div>'+s+'</div>'
++'<div class="mhp"><i style="width:'+Math.max(0,f.hp/f.max*100)+'%"></i></div>'
++'<div class="fhp"><span class="cur">'+Math.max(0,f.hp)+'</span><span class="sp">/</span><span class="mx">'+f.max+'</span></div>'
++'<div class="mname">'+f.n+'</div>'
++(pv?'<div class="pv" style="color:'+pv.c+'">'+pv.n+'</div>':'')
++'<div class="wk">破绽·'+(f.w==='a'?'斩':f.w==='p'?'钝':f.w==='f'?'火':'守')+'</div></div>';
+}
+
+/* —— 覆盖：强化扩充 —— */
+var UPG=[
+{id:'hp',n:'生命强化',d:'生命上限 +2',max:10,p:[60,120,200,320,480,680,920,1200,1550,1950]},
+{id:'blk',n:'护甲强化',d:'每层开局格挡 +1',max:8,p:[80,160,280,450,680,980,1350,1800]},
+{id:'chain',n:'连锁强化',d:'连锁倍率 +0.03',max:8,p:[100,200,350,550,800,1100,1450,1900]}
+];
+
+function CM(n){
+var b=n<=1?1:n===2?1.6:n===3?2.2:2.9;
+if(G.weapon==='sword')b+=0.5;
+if(HR('tail'))b+=0.3;
+b+=(G.upg.chain||0)*0.03;
+return b;
+}
+
+function startFloor(n){
+G.max=44+HPM()+(G.upg.hp||0)*2;
+if(G.hp>G.max)G.hp=G.max;
+var isB=!!BS[n];
+var cnt=isB?1:(n<4?1:n<10?2:n<20?R(1,2):n<26?2:R(2,3));
+var m=1+(n-1)*(isB?0.075:0.1);
+var foes=[];
+if(isB){foes.push(mk(BS[n],m))}
+else{for(var i=0;i<cnt;i++){var t=F[R(0,F.length-1)];
+foes.push(mk(t,m*(cnt===1?1:cnt===2?0.62:0.46)));G.dexF[t.n]=1}}
+B={n:n,boss:isB,foes:foes,tg:0,en:3,turn:1,ch:0,ct:'',over:false,lock:false,
+hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
+dN(5+(HR('sand')?1:0)+(G.weapon==='wand'?1:0));
+if(isB){S.boss();FL('r');SK()}
+ambStart();
+go('fight');
+if(!G.tut)setTimeout(tutStart,700);
+}
+
+/* —— 覆盖：无尽模式降难 —— */
+function nextNight(){
+NW.run++;
+var ks=[10,20,30],t=BS[ks[(NW.run-1)%3]];
+var m=1+(NW.run-1)*0.075;
+var f=mk(t,m*1.05);
+f.hp=Math.round(f.hp*1.05);f.max=f.hp;
+B={n:NW.run,boss:true,foes:[f],tg:0,en:3,turn:1,ch:0,ct:'',over:false,lock:false,
+hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
+dN(5+(HR('sand')?1:0));
+S.boss();FL('r');ambStart();go('fight');
 }  
 </script>
 </body>
