@@ -1497,6 +1497,258 @@ hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
 dN(5+(HR('sand')?1:0));
 S.boss();FL('r');ambStart();go('fight');
 }  
+/* ===== 补丁：格挡显示 + 扩充道具牌 ===== */
+(function(){
+var css='.blkp{font-family:"Songti SC",serif;font-size:13px;font-weight:700;color:#8fd0ff;'
++'padding:3px 9px;border-radius:8px;background:rgba(60,120,180,.2);'
++'border:1px solid rgba(120,200,255,.55);box-shadow:0 0 14px rgba(90,180,255,.45);white-space:nowrap;'
++'animation:blkf .35s ease-out}'
++'@keyframes blkf{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1)}}';
+var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+})();
+
+/* —— 新增 4 张道具牌 —— */
+C.betray={n:'出卖',c:1,d:'抽 2 张·自伤 4',t:'p',ic:'drop',q:3,self:4,draw:2};
+C.sacrifice={n:'献祭',c:0,d:'回复 12·自伤 3',t:'s',ic:'heart',q:3,heal:12,self:3};
+C.madness={n:'癫狂',c:0,d:'5 伤害 ×3·自伤 2',t:'a',ic:'bolt',q:3,dmg:5,hits:3,self:2};
+C.abyssgrip={n:'深渊之握',c:3,d:'30 伤害·易伤3·自伤5',t:'a',ic:'skull',q:4,dmg:30,vuln:3,self:5};
+
+var SCARDS=[
+{k:'chaos',p:500},{k:'gamble',p:700},{k:'mirror',p:600},
+{k:'betray',p:450},{k:'sacrifice',p:400},{k:'madness',p:650},{k:'abyssgrip',p:1200}
+];
+
+/* —— 覆盖：战斗界面（加格挡徽章） —— */
+function rFight(){
+var orbs='',nO=3+(HR('candle')?1:0);
+for(var i=0;i<nO;i++)orbs+='<i class="pip'+(i<B.en?'':' off')+'"></i>';
+var cnt=B.foes.length,w=cnt===1?225:cnt===2?155:118,fh='';
+for(var j=0;j<B.foes.length;j++)fh+=fH(B.foes[j],w,j);
+var cur=B.foes[B.tg]||B.foes[0];
+$('app').innerHTML='<div class="top"><div class="r1">'
++'<button class="bk" data-a="flee">←</button>'
++'<div class="hp"><div class="hn">'+Math.max(0,G.hp)+'<span class="hx">/'+G.max+'</span></div>'
++'<div class="hb"><i style="width:'+Math.max(0,G.hp/G.max*100)+'%"></i></div></div>'
++(B.pb>0?'<div class="blkp">🛡 '+B.pb+'</div>':'')
++'<div class="sb"><div class="sl"><span>SAN</span><b>'+Math.max(0,G.san)+'</b></div>'
++'<div class="sbk"><i style="width:'+Math.max(0,G.san)+'%"></i></div></div>'
++'<button class="bk" data-a="help">?</button></div>'
++'<div class="or">'+orbs+'<div class="di">'+(NW?'第 '+NW.run+' 夜':'第 '+B.n+' 层')+'<br>抽 '+B.draw.length+' · 弃 '+B.disc.length+'</div></div></div>'
++'<div class="ar"><div class="cb'+(B.ch>1?' on':'')+'">连锁 '+B.ch+' · ×'+CM(B.ch).toFixed(1)+'</div>'
++heroSVG()+'<div class="fs">'+fh+'</div>'
++'<div class="sty">'+(cur?cur.story:'')+'</div></div>'
++'<div class="btm"><div class="hrow"><div class="hand">'
++B.hand.map(function(k,i){return cH(k,i)}).join('')
++'</div><button class="end'+(B.lock?' lock':'')+'" data-a="end">'+(B.lock?'…':'结束<br>回合')+'</button></div></div>';
+}
+/* ===== 补丁：50层 + 药水 + 事件 + 每日挑战 ===== */
+(function(){
+var css='.blkp{font-family:"Songti SC",serif;font-size:13px;font-weight:700;color:#8fd0ff;padding:3px 9px;border-radius:8px;background:rgba(60,120,180,.2);border:1px solid rgba(120,200,255,.55);box-shadow:0 0 14px rgba(90,180,255,.45);white-space:nowrap}'
++'.pots{display:flex;gap:6px;margin-left:8px}'
++'.pot{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:15px;position:relative;'
++'background:radial-gradient(circle at 35% 30%,#2e2640,#151020);border:1px solid #4a3f5c;color:#e0d8c8}'
++'.pot.has{border-color:#8fd0ff;box-shadow:0 0 12px rgba(90,180,255,.5)}'
++'.pot b{position:absolute;right:-3px;bottom:-3px;font-size:9px;background:#2a2338;border:1px solid #4a3f5c;border-radius:6px;padding:0 4px;color:#ffe8b0}'
++'.pot.empty{opacity:.28}'
++'.evopt{display:block;width:100%;padding:14px;border-radius:10px;margin-top:10px;text-align:left;'
++'background:linear-gradient(160deg,#2a2338,#161220);border:1px solid #4a3f5c;color:#e8e0d0;font-size:13px}'
++'.evopt:active{background:#332a44}';
+var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+})();
+
+/* —— 5 章 —— */
+var CH=[{n:'锈蚀回廊',c:'#d8bc80'},{n:'骨殖深渊',c:'#8ed0b0'},{n:'熔心裂谷',c:'#f09a68'},
+{n:'无声墓园',c:'#a89ce0'},{n:'第五十层',c:'#ffe8b0'}];
+
+/* —— 2 个新 Boss —— */
+BS[40]={n:'深渊之眼',e:[[50,44,18],[36,36,9],[64,36,9]],atk:26,hp:230,w:'s',pv:'armor',snd:'a9',s:'它一直在看着你。'};
+BS[50]={n:'第五十层之主',e:[[44,38,13],[56,38,13],[50,52,20]],atk:32,hp:320,w:'f',pv:'regen',snd:'a11',s:'门在你面前。它没有锁。'};
+
+/* —— 药水 —— */
+if(!G.potions)G.potions={heal:0,power:0,block:0};
+if(!G.lastDaily)G.lastDaily='';
+var POT=[
+{k:'heal',i:'🜂',n:'治疗药水',d:'立刻回复 22 生命',p:80},
+{k:'power',i:'🜃',n:'力量药水',d:'本场力量 +3',p:100},
+{k:'block',i:'🜄',n:'护甲药水',d:'获得 18 格挡',p:80}
+];
+
+/* —— 覆盖：50 层数值 + 每 10 层生命上限 +5 —— */
+function startFloor(n){
+var isB=!!BS[n];
+G.max=44+HPM()+(G.upg.hp||0)*2+Math.floor(G.best/10)*5;
+if(G.hp>G.max)G.hp=G.max;
+var cnt=isB?1:(n<4?1:n<10?2:n<20?R(1,2):n<35?2:R(2,3));
+var m=isB?(1+(n-1)*0.03):(1+(n-1)*0.055);
+var foes=[];
+if(isB){foes.push(mk(BS[n],m))}
+else{for(var i=0;i<cnt;i++){var t=F[R(0,F.length-1)];
+foes.push(mk(t,m*(cnt===1?1:cnt===2?0.62:0.46)));G.dexF[t.n]=1}}
+B={n:n,boss:isB,foes:foes,tg:0,en:3,turn:1,ch:0,ct:'',over:false,lock:false,
+hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
+dN(5+(HR('sand')?1:0)+(G.weapon==='wand'?1:0));
+if(isB){S.boss();FL('r');SK()}
+ambStart();go('fight');
+if(!G.tut)setTimeout(tutStart,700);
+}
+
+/* —— 覆盖：战斗界面（加格挡 + 药水槽） —— */
+function rFight(){
+var orbs='',nO=3+(HR('candle')?1:0);
+for(var i=0;i<nO;i++)orbs+='<i class="pip'+(i<B.en?'':' off')+'"></i>';
+var cnt=B.foes.length,w=cnt===1?225:cnt===2?155:118,fh='';
+for(var j=0;j<B.foes.length;j++)fh+=fH(B.foes[j],w,j);
+var cur=B.foes[B.tg]||B.foes[0];
+var pots='';
+for(var p=0;p<POT.length;p++){var n2=G.potions[POT[p].k]||0;
+pots+='<div class="pot'+(n2>0?' has':' empty')+'" data-a="usePot" data-k="'+POT[p].k+'">'+POT[p].i+(n2>0?'<b>'+n2+'</b>':'')+'</div>'}
+$('app').innerHTML='<div class="top"><div class="r1">'
++'<button class="bk" data-a="flee">←</button>'
++'<div class="hp"><div class="hn">'+Math.max(0,G.hp)+'<span class="hx">/'+G.max+'</span></div>'
++'<div class="hb"><i style="width:'+Math.max(0,G.hp/G.max*100)+'%"></i></div></div>'
++(B.pb>0?'<div class="blkp">🛡 '+B.pb+'</div>':'')
++'<div class="sb"><div class="sl"><span>SAN</span><b>'+Math.max(0,G.san)+'</b></div>'
++'<div class="sbk"><i style="width:'+Math.max(0,G.san)+'%"></i></div></div>'
++'<button class="bk" data-a="help">?</button></div>'
++'<div class="or">'+orbs+'<div class="pots">'+pots+'</div>'
++'<div class="di">'+(NW?'第 '+NW.run+' 夜':'第 '+B.n+' 层')+'<br>抽 '+B.draw.length+' · 弃 '+B.disc.length+'</div></div></div>'
++'<div class="ar"><div class="cb'+(B.ch>1?' on':'')+'">连锁 '+B.ch+' · ×'+CM(B.ch).toFixed(1)+'</div>'
++heroSVG()+'<div class="fs">'+fh+'</div><div class="sty">'+(cur?cur.story:'')+'</div></div>'
++'<div class="btm"><div class="hrow"><div class="hand">'
++B.hand.map(function(k,i){return cH(k,i)}).join('')
++'</div><button class="end'+(B.lock?' lock':'')+'" data-a="end">'+(B.lock?'…':'结束<br>回合')+'</button></div></div>';
+}
+
+/* —— 覆盖：结算页（按钮改为 next） —— */
+function rSum(){
+var s=SUMM||{n:0,hp:G.hp,max:G.max,san:G.san,gold:0,deck:G.deck.length,night:false};
+$('app').innerHTML='<div class="sum">'
++'<div style="text-align:center;font-size:11px;letter-spacing:.4em;color:#8a7d62">'+(s.night?'第 '+s.n+' 夜':'第 '+s.n+' 层')+'</div>'
++'<div class="stt" style="margin-top:10px">通 过</div>'
++'<div class="sh" style="margin-top:20px"><div class="sr"><span>生命</span><b style="color:#ffc0b4">'+s.hp+' / '+s.max+'</b></div>'
++'<div class="sr"><span>理智</span><b style="color:#a8d4ff">'+s.san+'</b></div>'
++'<div class="sr"><span>金币</span><b style="color:#f0dca8">◈ +'+s.gold+'</b></div>'
++'<div class="sr"><span>牌组</span><b>'+s.deck+' 张</b></div></div>'
++'<div style="flex:1"></div><button class="btn g" data-a="next">继 续</button></div>';
+}
+
+/* —— 覆盖：商店（加药水） —— */
+function rShop(){
+var up='';
+for(var i=0;i<UPG.length;i++){var u=UPG[i],lv=G.upg[u.id]||0,full=lv>=u.max,pr=full?0:u.p[lv];
+up+='<div class="sr"><div><div>'+u.n+' <span style="color:#8a8497;font-size:11px">Lv.'+lv+'/'+u.max+'</span></div>'
++'<div class="dm">'+u.d+'</div></div>'
++(full?'<button class="sm" style="opacity:.4">已满</button>'
+:'<button class="sm" data-a="buyUpg" data-k="'+u.id+'">◈ '+pr+'</button>')+'</div>'}
+var po='';
+for(var j=0;j<POT.length;j++){var pt=POT[j];
+po+='<div class="sr"><div><div>'+pt.n+'</div><div class="dm">'+pt.d+' · 持有 '+(G.potions[pt.k]||0)+'</div></div>'
++'<button class="sm" data-a="buyPot" data-k="'+pt.k+'">◈ '+pt.p+'</button></div>'}
+var cr='';
+for(var q=0;q<SCARDS.length;q++){var sc=SCARDS[q],cc=C[sc.k],own=G.deck.indexOf(sc.k)>=0;
+cr+='<div class="sr"><div><div style="color:'+QC[cc.q]+'">'+cc.n+'</div><div class="dm">'+cc.d+'</div></div>'
++(own?'<button class="sm" style="opacity:.4">已拥有</button>'
+:'<button class="sm" data-a="buyCard" data-k="'+sc.k+'">◈ '+sc.p+'</button>')+'</div>'}
+var avs='';
+for(var r=0;r<AV.length;r++){var a=AV[r],o2=G.ownedAv.indexOf(a.id)>=0,cur=G.avatar===a.id;
+avs+='<div class="sr"><div style="display:flex;align-items:center;gap:10px">'
++'<div style="width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#2c2438,#12101a);border:1px solid rgba(232,200,138,.4)">'+avSVG(a.id,26)+'</div>'
++'<div><div>头像 '+(r+1)+'</div><div class="dm">'+(o2?(cur?'使用中':'已拥有'):'◈ '+a.p)+'</div></div></div>'
++(o2?('<button class="sm'+(cur?' on':'')+'" data-a="avUse" data-v="'+a.id+'">'+(cur?'使用中':'使用')+'</button>')
+:('<button class="sm" data-a="avBuy" data-v="'+a.id+'">◈ '+a.p+'</button>'))+'</div>'}
+$('app').innerHTML='<div class="pg"><div class="hd"><button class="bk" data-a="toHome">←</button>'
++'<div class="tt">商 店</div><div class="ct">◈ '+G.gold+'</div></div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">永 久 强 化</div>'+up+'</div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">药 水</div>'+po+'</div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">奇 葩 卡</div>'+cr+'</div>'
++'<div class="sh"><div style="font-size:10px;letter-spacing:.24em;color:#8a7d62;margin-bottom:4px">头 像</div>'+avs+'</div></div>';
+}
+
+/* —— 事件 —— */
+function showEvent(){
+var d=document.createElement('div');d.className='mask';
+d.innerHTML='<div class="dlg"><h2 style="color:#f0dca8">祭 坛</h2>'
++'<p style="text-align:left;color:#b0aab8">一座还在滴血的石坛。上面刻着：<br>「拿走的，都要还。」</p>'
++'<button class="evopt" data-a="ev" data-v="0"><b style="color:#ff9a8a">献上 6 生命</b><br><span style="font-size:11px;color:#8a8497">获得一张高品质卡</span></button>'
++'<button class="evopt" data-a="ev" data-v="1"><b style="color:#f0dca8">拿走 90 金币</b><br><span style="font-size:11px;color:#8a8497">理智 -12</span></button>'
++'<button class="evopt" data-a="ev" data-v="2"><b>无视它，继续走</b><br><span style="font-size:11px;color:#8a8497">回复 10 点生命</span></button>'
++'</div>';
+document.body.appendChild(d);
+}
+
+/* —— 使用 / 购买药水 —— */
+function usePot(k){
+if(!B||B.over)return;
+var n2=G.potions[k]||0;
+if(n2<=0){T('没有这种药水');return}
+G.potions[k]=n2-1;
+if(k==='heal'){G.hp=Math.min(G.max,G.hp+22);T('回复 22 生命')}
+if(k==='power'){B.str+=3;T('力量 +3')}
+if(k==='block'){B.pb+=18;T('获得 18 格挡')}
+S.coin();SAVE();render();
+}
+
+/* —— 每日挑战 —— */
+function startDaily(){
+G.lastDaily=TODAY();
+G.hp=G.max;G.san=100;
+var t=BS[20],m=1.15;
+var f=mk(t,m);f.hp=Math.round(f.hp*0.9);f.max=f.hp;
+f.n='深渊之眼·今日';
+B={n:99,boss:true,foes:[f],tg:0,en:3,turn:1,ch:0,ct:'',over:false,lock:false,
+hand:[],draw:SH(G.deck),disc:[],pb:(G.upg.blk||0),str:0};
+dN(5+(HR('sand')?1:0));
+S.boss();FL('r');ambStart();go('fight');
+NW=null;NW={run:0,best:0,daily:true};
+}
+
+/* —— 主菜单加每日 —— */
+function rHome(){
+var can=(G.lastSign!==TODAY()),canD=(G.lastDaily!==TODAY());
+$('app').innerHTML='<div class="home"><div id="ef"></div>'
++'<div class="hd2"><div class="av">'+avSVG(G.avatar,40)+'</div>'
++'<div style="flex:1"><div class="nk">'+G.nick+'</div><div class="hs">第 '+G.best+' / 50 层 · ◈ '+G.gold+'</div></div>'
++'<button class="bk" data-a="settings">⚙</button></div>'
++'<div class="hm"><div class="ht">守夜人</div><div class="he">THE LAST VIGIL</div></div>'
++'<div class="hm2"><button class="btn g" data-a="toLevel">闯 关 · 50 层</button>'
++'<button class="btn'+(canD?' bd':'')+'" data-a="daily">每 日 挑 战</button>'
++'<div class="mr"><button class="btn" data-a="night">守 夜 人</button><button class="btn" data-a="shop">商 店</button></div>'
++'<div class="mr"><button class="btn" data-a="gacha">抽 奖</button><button class="btn" data-a="dex">图 鉴</button></div>'
++'<div class="mr"><button class="btn'+(can?' bd':'')+'" data-a="sign">签 到</button></div></div></div>';
+startEyes();
+}
+
+/* —— 处理新按钮 —— */
+document.addEventListener('click',function(e){
+var t=e.target.closest('[data-a]');if(!t)return;
+var a=t.getAttribute('data-a'),v=parseInt(t.getAttribute('data-v'),10),k=t.getAttribute('data-k');
+if(a==='next'){
+  if(NW&&NW.daily){NW=null;G.gold+=150;SAVE();T('每日挑战完成 · +150 金币');go('home');return}
+  if(G.best>=50){go('home');T('你抵达了第五十层');return}
+  if(G.best===15||G.best===25||G.best===35||G.best===45){showEvent();return}
+  PICKS=rollR();rollRel();go('reward');return;
+}
+if(a==='ev'){
+  var ms=document.querySelectorAll('.mask');for(var i=0;i<ms.length;i++)ms[i].remove();
+  if(v===0){G.hp-=6;var pool=[];for(var kk in C){if(C[kk].q>=3)pool.push(kk)}
+    var got=pool[R(0,pool.length-1)];G.deck.push(got);G.dexC[got]=1;SAVE();T('获得：'+C[got].n)}
+  if(v===1){G.gold+=90;G.san=Math.max(0,G.san-12);SAVE();T('+90 金币 · 理智 -12')}
+  if(v===2){G.hp=Math.min(G.max,G.hp+10);SAVE();T('回复 10 生命')}
+  PICKS=rollR();rollRel();go('reward');return;
+}
+if(a==='usePot'){usePot(k);return}
+if(a==='buyPot'){
+  var it=null;for(var j=0;j<POT.length;j++)if(POT[j].k===k)it=POT[j];
+  if(!it)return;
+  if(G.gold<it.p){T('金币不足');return}
+  G.gold-=it.p;G.potions[k]=(G.potions[k]||0)+1;S.coin();SAVE();render();return;
+}
+if(a==='daily'){
+  if(G.lastDaily===TODAY()){T('今天已经打过了');return}
+  if(!G.picked){T('先去闯关选一把武器');return}
+  startDaily();return;
+}
+});  
 </script>
 </body>
 </html>
