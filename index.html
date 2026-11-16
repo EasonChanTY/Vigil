@@ -1986,6 +1986,56 @@ return '<div style="display:flex;flex-direction:column;align-items:center" data-
 +'<button class="btn" data-a="skip" style="flex:1;font-size:12px;padding:12px">跳过</button>'
 +'</div></div>';
 }
+/* ===== 补丁：历史纪录 / 符文触发修复 / 自检 ===== */
+if(G.record===undefined)G.record=G.best||0;
+
+/* —— 覆盖：重来时保留历史纪录 —— */
+function hardReset(){
+if(G.best>(G.record||0))G.record=G.best;
+G.best=0;G.hp=G.max;G.san=100;
+resetDeck();SAVE();
+var ms=document.querySelectorAll('.mask');for(var i=0;i<ms.length;i++)ms[i].remove();
+go('home');
+}
+
+/* —— 覆盖：选牌后触发符文（改用 B.n，更可靠） —— */
+function pickCard(idx){
+if(!PICKS||!PICKS[idx])return;
+G.deck.push(PICKS[idx]);G.dexC[PICKS[idx]]=1;
+if(RELIC)G.relics.push(RELIC);
+PICKS=null;RELIC=null;
+var n=(B&&B.n)||(SUMM&&SUMM.n)||0;
+if(n>(G.record||0))G.record=n;
+SAVE();
+if(NW){nextNight();return}
+if(n>0&&n%10===0){showEnh();return}
+go('map');
+}
+
+/* —— 覆盖：设置页（显示历史纪录 + 符文自检） —— */
+function rSet(){
+$('app').innerHTML='<div class="pg"><div class="hd"><button class="bk" data-a="toHome">←</button><div class="tt">设 置</div></div>'
++'<div class="sh"><div class="sr"><div><div>昵称</div><div class="dm">'+G.nick+'</div></div>'
++'<button class="sm" data-a="nick">修改</button></div></div>'
++'<div class="sh"><div class="sr"><div><div>音效</div><div class="dm">出牌、命中、低语</div></div>'
++'<button class="sm'+(G.sfx?' on':'')+'" data-a="tgSfx">'+(G.sfx?'开':'关')+'</button></div></div>'
++'<div class="sh"><div class="sr"><div><div>守夜人纪录</div></div><b>'+G.nwBest+' 夜</b></div>'
++'<div class="sr"><div><div>历史最高层数</div></div><b>第 '+Math.max(G.record||0,G.best)+' 层</b></div>'
++'<div class="sr"><div><div>当前进度</div></div><b>第 '+(G.best+1)+' 层</b></div></div>'
++'<div class="sh"><div class="sr"><div><div>符文自检</div><div class="dm">点一下，能弹出符文就说明补丁生效</div></div>'
++'<button class="sm" data-a="testEnh">测试</button></div></div>'
++'<div class="sh"><div class="sr" data-a="contact"><div><div>提意见 / 找作者</div>'
++'<div class="dm">2797800498@qq.com</div></div><b style="color:#f0dca8">写信</b></div></div>'
++'<div class="sh"><div class="sr"><div><div style="color:#e08a5a">清空存档</div>'
++'<div class="dm">所有进度会消失</div></div><button class="sm" data-a="reset" style="color:#e08a5a">清空</button></div></div>'
++'<div style="text-align:center;font-size:9px;color:#4e4a58;letter-spacing:.2em;margin-top:12px">v1.2 · THE LAST VIGIL</div></div>';
+}
+
+/* —— 自检按钮 —— */
+document.addEventListener('click',function(e){
+var t=e.target.closest('[data-a]');if(!t)return;
+if(t.getAttribute('data-a')==='testEnh'){showEnh();return}
+});
 </script>
 </body>
 </html>
