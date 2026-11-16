@@ -886,6 +886,101 @@ var c=e.target.closest('.card');
 if(c&&VIEW==='fight'){PC(parseInt(c.dataset.i,10));return}
 });
 render();
+/* ===== 补丁：眼睛颜色 / 卡牌亮度 / 选牌动画 / 音效重做 ===== */
+(function(){
+var css='.ey{background:radial-gradient(circle at 38% 32%,#fff 0%,var(--c,#ffe08a) 38%,var(--c,#ffe08a) 62%,rgba(8,4,12,.92) 100%)!important;box-shadow:0 0 14px 6px var(--c,#ffe08a),0 0 38px 16px var(--c,#ffe08a),0 0 90px 36px rgba(255,190,110,.18)!important}'
++'.in{background:radial-gradient(130% 50% at 50% -8%,rgba(255,240,205,.2),transparent 58%),linear-gradient(172deg,#4d3d2c,#31261a 42%,#1a140e)!important}'
++'.q2 .in,.q3 .in,.q4 .in{background:radial-gradient(130% 50% at 50% -8%,rgba(255,240,205,.2),transparent 58%),linear-gradient(172deg,#4d3d2c,#31261a 42%,#1a140e)!important}'
++'.card.fly{animation:flyto .48s cubic-bezier(.45,0,.2,1) forwards!important}'
++'@keyframes flyto{0%{transform:scale(1);opacity:1}55%{transform:translateY(-36px) scale(1.18);opacity:1}100%{transform:translateY(340px) scale(.15);opacity:0}}';
+var st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+})();
+
+var FC={'腐化之影':'#8a5cff','双瞳':'#ff6a8a','千目':'#ffd24a','裂口':'#ff7a4a',
+'食烛者':'#7affb0','触须之眼':'#4ad4ff','无底之瞳':'#b04aff','哭泣者':'#6a9aff',
+'守门人':'#ff4a4a','巨魔之眼':'#ff9a3a','骨王':'#4affc8'};
+
+function fH(f,w,idx){
+var col=FC[f.n]||'#ffe08a';
+var s='';
+for(var i=0;i<f.e.length;i++){var e=f.e[i];
+s+='<div class="ew '+(i===1?'d1':i===2?'d2':'')+'" style="left:'+e[0]+'%;top:'+e[1]+'%;width:'+e[2]+'%;height:'+e[2]+'%;margin-left:-'+(e[2]/2)+'%;margin-top:-'+(e[2]/2)+'%"><div class="ey" style="--c:'+col+'"></div></div>'}
+var pv=PV[f.pv],isB=B.boss;
+return '<div class="foe'+(B.tg===idx?' sel':'')+(f.dead?' dead':'')+(isB?' boss':'')+'" data-f="'+idx+'">'
++(isB?'<div class="bt2" style="color:'+col+'">B O S S</div>':'')
++(f.ch?'<div class="ult">⚠ 蓄力中</div>':'')
++'<div class="fb" style="width:'+w+'px;height:'+w+'px">'
++(isB?'<div class="bh" style="border-color:'+col+'55;box-shadow:0 0 44px '+col+'55 inset"></div>':'')
++'<div class="ms"></div><div class="ms2"></div>'+s+'</div>'
++'<div class="mhp"><i style="width:'+Math.max(0,f.hp/f.max*100)+'%"></i></div>'
++'<div class="fhp"><span class="cur">'+Math.max(0,f.hp)+'</span><span class="sp">/</span><span class="mx">'+f.max+'</span></div>'
++'<div class="mname">'+f.n+'</div>'
++(pv?'<div class="pv" style="color:'+pv.c+'">'+pv.n+'</div>':'')
++'<div class="wk">破绽·'+(f.w==='a'?'斩':f.w==='p'?'钝':f.w==='f'?'火':'守')+'</div></div>';
+}
+
+var RV=null;
+function V(f0,f1,d,tp,v,wet){
+var c=ACf();if(!c||!G.sfx)return;
+if(!RV){
+RV=c.createConvolver();
+var n=Math.floor(c.sampleRate*2),b=c.createBuffer(2,n,c.sampleRate);
+for(var ch=0;ch<2;ch++){var x=b.getChannelData(ch);
+for(var i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.4)}
+RV.buffer=b;
+var wg=c.createGain();wg.gain.value=.55;RV.connect(wg);wg.connect(MG);
+}
+var t=c.currentTime,o=c.createOscillator(),g=c.createGain();
+o.type=tp||'sine';
+o.frequency.setValueAtTime(f0,t);
+if(f1)o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+d);
+g.gain.setValueAtTime(.0001,t);
+g.gain.linearRampToValueAtTime(v||.16,t+.008);
+g.gain.exponentialRampToValueAtTime(.0001,t+d);
+o.connect(g);g.connect(MG);
+if(wet){var w2=c.createGain();w2.gain.value=wet;g.connect(w2);w2.connect(RV)}
+o.start(t);o.stop(t+d+.05);
+}
+
+var S={
+play:function(){V(1600,1100,.06,'triangle',.06,0)},
+hit:function(){V(200,60,.15,'sine',.22,.25);V(900,200,.06,'square',.07,0)},
+hurt:function(){V(90,30,.5,'sawtooth',.18,.5)},
+block:function(){V(2600,1800,.14,'triangle',.07,.3)},
+win:function(){V(523,0,.4,'sine',.11,.4);setTimeout(function(){V(659,0,.5,'sine',.1,.4)},110);setTimeout(function(){V(1046,0,.9,'sine',.1,.5)},220)},
+die:function(){V(260,28,2.2,'sine',.2,.9)},
+boss:function(){V(38,0,.7,'sine',.3,.7);V(57,0,.6,'sine',.12,.7)},
+coin:function(){V(1400,0,.12,'triangle',.1,.3);setTimeout(function(){V(1900,0,.18,'triangle',.07,.3)},60)},
+whisper:function(){V(46,0,1.8,'sine',.14,.9);V(58,0,1.8,'sine',.07,.9)},
+charge:function(){V(60,220,1.2,'sawtooth',.13,.5)},
+ult:function(){V(80,26,.7,'sawtooth',.3,.6)},
+epic:function(){V(300,1800,.7,'sawtooth',.12,.6);V(523,0,1,'sine',.08,.7)},
+a1:function(){V(140,45,.35,'sine',.18,.3)},
+a2:function(){V(220,70,.3,'triangle',.16,.2)},
+a3:function(){V(480,220,.2,'square',.08,.3)},
+a4:function(){V(1100,240,.3,'sawtooth',.15,.3)},
+a5:function(){V(95,32,.45,'sawtooth',.18,.3)},
+a6:function(){V(70,30,.8,'sine',.16,.6)},
+a7:function(){V(42,20,.9,'sine',.28,.8)},
+a8:function(){V(600,340,.9,'sine',.1,.7)},
+a9:function(){V(240,90,.24,'square',.14,.3)},
+a10:function(){V(36,20,.7,'sine',.3,.6)},
+a11:function(){V(40,22,.8,'sine',.28,.7)}
+};
+
+function pickC(i){
+if(!PICKS||!PICKS[i])return;
+var el=document.querySelector('[data-a="pick"][data-v="'+i+'"] .card');
+if(el)el.classList.add('fly');
+S.coin();
+setTimeout(function(){
+G.deck.push(PICKS[i]);G.dexC[PICKS[i]]=1;
+if(RELIC)G.relics.push(RELIC);
+PICKS=null;RELIC=null;SAVE();
+if(NW)nextNight();else go('map');
+},440);
+}
+  
 </script>
 </body>
 </html>
